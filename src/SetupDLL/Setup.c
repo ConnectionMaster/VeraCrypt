@@ -2336,6 +2336,38 @@ EXTERN_C UINT STDAPICALLTYPE VC_CustomAction_PostInstall(MSIHANDLE hInstaller)
 	UINT			uiRet           = ERROR_INSTALL_FAILURE;
 	BOOL			bOK				= TRUE;
 	WCHAR			szCurrentDir[MAX_PATH];
+	const wchar_t* 	oldFileNames[] = {
+		L"docs\\html\\en\\AddNewSystemVar.jpg",
+		L"docs\\html\\en\\CertificateCannotBeVerified.jpg",
+		L"docs\\html\\en\\CertVerifyFails.jpg",
+		L"docs\\html\\en\\DistributionPackageDamaged.jpg",
+		L"docs\\html\\en\\DownloadVS2010.jpg",
+		L"docs\\html\\en\\DownloadVS2019.jpg",
+		L"docs\\html\\en\\DownloadVSBuildTools.jpg",
+		L"docs\\html\\en\\gzipCommandLine.jpg",
+		L"docs\\html\\en\\NasmCommandLine.jpg",
+		L"docs\\html\\en\\RegeditPermissions-1.jpg",
+		L"docs\\html\\en\\RegeditPermissions-2.jpg",
+		L"docs\\html\\en\\RegeditPermissions-3.jpg",
+		L"docs\\html\\en\\RegeditPermissions-4.jpg",
+		L"docs\\html\\en\\SelectAdvancedSystemSettings.jpg",
+		L"docs\\html\\en\\SelectEnvironmentVariables.jpg",
+		L"docs\\html\\en\\SelectPathVariable.jpg",
+		L"docs\\html\\en\\SelectThisPC.jpg",
+		L"docs\\html\\en\\upxCommandLine.jpg",
+		L"docs\\html\\en\\VS2010BuildSolution.jpg",
+		L"docs\\html\\en\\VS2010Win32Config.jpg",
+		L"docs\\html\\en\\VS2010X64Config.jpg",
+		L"docs\\html\\en\\VS2019ARM64Config.jpg",
+		L"docs\\html\\en\\VS2019BuildSolution.jpg",
+		L"docs\\html\\en\\YasmCommandLine.jpg",
+		L"docs\\html\\en\\BCH_Logo_48x30.png",
+		L"docs\\html\\en\\LinuxPrepAndBuild.sh",
+		L"docs\\html\\en\\LinuxPrepAndBuild.zip",
+		L"docs\\html\\en\\RIPEMD-160.html",
+		L"docs\\html\\en\\ru\\BCH_Logo_48x30.png",
+		L"Languages\\Language.ru - Copy.xml",
+	};
 
 	MSILog(hInstaller, MSI_INFO_LEVEL, L"Begin VC_CustomAction_PostInstall");
 
@@ -2446,12 +2478,23 @@ EXTERN_C UINT STDAPICALLTYPE VC_CustomAction_PostInstall(MSIHANDLE hInstaller)
 		WIN32_FIND_DATA f;
 		HANDLE h;
 		wchar_t szTmp[TC_MAX_PATH];
+		size_t i;
 
 		// delete "VeraCrypt Setup.exe" if it exists
 		StringCbPrintfW (szTmp, sizeof(szTmp), L"%s%s", szInstallDir.c_str(), L"VeraCrypt Setup.exe");
 		if (FileExists(szTmp))
 		{
 			ForceDeleteFile(szTmp);
+		}
+
+		// delete files wrongly installed by previous versions in installation folder
+		for (i = 0; i < ARRAYSIZE(oldFileNames); i++)
+		{
+			StringCbPrintfW (szTmp, sizeof(szTmp), L"%s%s", szInstallDir.c_str(), oldFileNames[i]);
+			if (FileExists(szTmp))
+			{
+				ForceDeleteFile(szTmp);
+			}
 		}
 
 		StringCbPrintfW (szTmp, sizeof(szTmp), L"%s%s", szInstallDir.c_str(), L"VeraCrypt.exe");
@@ -2977,6 +3020,70 @@ end:
 	return uiRet;
 }
 
+static BOOL DirectoryExists (const wchar_t *dirName)
+{
+	DWORD attrib = GetFileAttributes (dirName);
+	return (attrib != INVALID_FILE_ATTRIBUTES && (attrib & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+static BOOL DeleteContentsOnReboot(LPCTSTR pszDir) {
+    TCHAR szPath[MAX_PATH];
+	TCHAR szSubPath[MAX_PATH];
+    WIN32_FIND_DATA FindFileData;
+    HANDLE hFind;
+	BOOL bHasBackslash = FALSE;
+	// check if pszDir ends with a backslash
+	if (pszDir[_tcslen(pszDir) - 1] == '\\')
+	{
+		bHasBackslash = TRUE;
+	}
+
+    // Prepare the path for FindFirstFile
+	if (bHasBackslash)
+		StringCchPrintf(szPath, MAX_PATH, TEXT("%s*"), pszDir);
+	else
+    	StringCchPrintf(szPath, MAX_PATH, TEXT("%s\\*"), pszDir);
+
+    hFind = FindFirstFile(szPath, &FindFileData);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+
+    BOOL result = TRUE;
+
+    do {
+        if (_tcscmp(FindFileData.cFileName, TEXT(".")) != 0 &&
+            _tcscmp(FindFileData.cFileName, TEXT("..")) != 0) {
+
+			if (bHasBackslash)
+				StringCchPrintf(szSubPath, MAX_PATH, TEXT("%s%s"), pszDir, FindFileData.cFileName);
+			else
+            	StringCchPrintf(szSubPath, MAX_PATH, TEXT("%s\\%s"), pszDir, FindFileData.cFileName);
+
+            if (FindFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                // Recursive call to handle subdirectories
+                if (!DeleteContentsOnReboot(szSubPath)) {
+                    result = FALSE; // Track failures but attempt to continue
+                }
+            } else {
+                // Schedule the file for deletion
+                if (!MoveFileEx(szSubPath, NULL, MOVEFILE_DELAY_UNTIL_REBOOT)) {
+                    result = FALSE; // Track failures
+                }
+            }
+        }
+    } while (FindNextFile(hFind, &FindFileData) != 0);
+
+    FindClose(hFind);
+
+    // Schedule the root directory for deletion, only if not done already
+    if (!MoveFileEx(pszDir, NULL, MOVEFILE_DELAY_UNTIL_REBOOT)) {
+        result = FALSE;
+    }
+
+    return result;
+}
+
 /* 
  * Same as Setup.c, function DoUninstall(), but 
  * without the actual installation, it only performs 
@@ -3152,6 +3259,33 @@ EXTERN_C UINT STDAPICALLTYPE VC_CustomAction_PostUninstall(MSIHANDLE hInstaller)
 			}
 
 			EnableWow64FsRedirection (TRUE);
+		}
+
+		// remove the installation folder is case it remains after uninstall
+		if (DirectoryExists (szInstallDir.c_str()))
+		{
+			MSILog(hInstaller, MSI_ERROR_LEVEL, L"VC_CustomAction_PostUninstall: REMOVING %s", szInstallDir.c_str());
+			if(DeleteDirectory (szInstallDir.c_str()))
+			{
+				MSILog(hInstaller, MSI_ERROR_LEVEL, L"VC_CustomAction_PostUninstall: %s removed", szInstallDir.c_str());
+			}
+			else
+			{
+				MSILog(hInstaller, MSI_ERROR_LEVEL, L"VC_CustomAction_PostUninstall: %s could not be removed. Scheduling removal on reboot", szInstallDir.c_str());
+				if (DeleteContentsOnReboot(szInstallDir.c_str()))
+				{
+					bRestartRequired = TRUE;
+					MSILog(hInstaller, MSI_ERROR_LEVEL, L"VC_CustomAction_PostUninstall: %s scheduled for removal on reboot", szInstallDir.c_str());
+				}
+				else
+				{
+					MSILog(hInstaller, MSI_ERROR_LEVEL, L"VC_CustomAction_PostUninstall: %s could not be scheduled for removal on reboot", szInstallDir.c_str());
+				}
+			}
+		}
+		else
+		{
+			MSILog(hInstaller, MSI_ERROR_LEVEL, L"VC_CustomAction_PostUninstall: %s does not exist", szInstallDir.c_str());
 		}
 	}
 
@@ -3356,6 +3490,7 @@ EXTERN_C UINT STDAPICALLTYPE VC_CustomAction_DoChecks(MSIHANDLE hInstaller)
 		if (bDisableReboot)
 		{
 			MSILog(hInstaller, MSI_INFO_LEVEL, L"VC_CustomAction_DoChecks: reboot is required but it is disabled because \"REBOOT\" specifies ReallySuppress");
+			uiRet = ERROR_SUCCESS;
 		}
 		else
 		{

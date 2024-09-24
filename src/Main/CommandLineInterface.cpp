@@ -29,6 +29,7 @@ namespace VeraCrypt
 		ArgPim (-1),
 		ArgSize (0),
 		ArgVolumeType (VolumeType::Unknown),
+		ArgAllowScreencapture (false),
 		ArgDisableFileSizeCheck (false),
 		ArgUseLegacyPassword (false),
 #if defined(TC_LINUX ) || defined (TC_FREEBSD)
@@ -41,6 +42,9 @@ namespace VeraCrypt
 
 		parser.SetSwitchChars (L"-");
 
+#if defined(TC_WINDOWS) || defined(TC_MACOSX)
+		parser.AddSwitch (L"",  L"allow-screencapture",	_("Allow window to be included in screenshots and screen captures (Windows/MacOS)"));
+#endif
 		parser.AddOption (L"",  L"auto-mount",			_("Auto mount device-hosted/favorite volumes"));
 		parser.AddSwitch (L"",  L"backup-headers",		_("Backup volume headers"));
 		parser.AddSwitch (L"",  L"background-task",		_("Start Background Task"));
@@ -142,6 +146,11 @@ namespace VeraCrypt
 			ArgMountOptions = Preferences.DefaultMountOptions;
 		}
 
+#if defined(TC_WINDOWS) || defined(TC_MACOSX)
+		ArgAllowScreencapture = parser.Found (L"allow-screencapture");
+#else
+		ArgAllowScreencapture = true; // Protection against screenshots is supported only on Windows and MacOS
+#endif
 		// Commands
 		if (parser.Found (L"auto-mount", &str))
 		{

@@ -59,7 +59,7 @@ extern unsigned short _rotl16(unsigned short value, unsigned char shift);
 #define TC_APP_NAME						"VeraCrypt"
 
 // Version displayed to user 
-#define VERSION_STRING					"1.26.13"
+#define VERSION_STRING					"1.26.15"
 
 #ifdef VC_EFI_CUSTOM_MODE
 #define VERSION_STRING_SUFFIX			"-CustomEFI"
@@ -73,9 +73,9 @@ extern unsigned short _rotl16(unsigned short value, unsigned char shift);
 #define VERSION_NUM						0x0126
 
 // Release date
-#define TC_STR_RELEASE_DATE			L"August 4, 2024"
+#define TC_STR_RELEASE_DATE			L"September 2, 2024"
 #define TC_RELEASE_DATE_YEAR			2024
-#define TC_RELEASE_DATE_MONTH			 8
+#define TC_RELEASE_DATE_MONTH			 9
 
 #define BYTES_PER_KB                    1024LL
 #define BYTES_PER_MB                    1048576LL
@@ -106,6 +106,12 @@ typedef unsigned __int64	TC_LARGEST_COMPILER_UINT;
 typedef __int64 int64;
 typedef unsigned __int64 uint64;
 #define LL(x) x##ui64
+#endif
+
+#if _MSC_VER > 1900
+#define VC_CDECL	__cdecl // this is needed because Windows driver on VS2019 uses stdcall for build
+#else
+#define VC_CDECL
 #endif
 
 #pragma warning( disable : 4201 )  // disable: 4201 nonstandard extension used : nameless struct/union
@@ -150,6 +156,8 @@ typedef uint64 TC_LARGEST_COMPILER_UINT;
 #define FALSE 0
 #define TRUE 1
 #endif
+
+#define VC_CDECL
 
 #endif // !_MSC_VER
 
